@@ -4,18 +4,19 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { instrument, significanceEvent, userWatermark, watchlist, watchlistItem } from "@/db/schema";
 import { applyAttentionCap, getUpcomingCalendarEvents, rankBriefEvents } from "@/lib/brief";
-import { getUserId } from "@/lib/watchlist";
+import { getUserId, getVisitorId, setVisitorCookie } from "@/lib/watchlist";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const db = getDb();
   const userId = getUserId(request);
+  const visitorId = getVisitorId(request);
   const now = new Date();
   const [savedWatermark] = await db
     .select({ lastSeenAt: userWatermark.lastSeenAt })
     .from(userWatermark)
-    .where(eq(userWatermark.userId, userId));
+    .where(eq(userWatermark.userId, visitorId));
   const lastSeenAt = savedWatermark?.lastSeenAt ?? new Date(0);
 
   const userInstruments = await db
@@ -27,14 +28,14 @@ export async function GET(request: Request) {
   const instrumentIds = userInstruments.map((row) => row.instrumentId);
 
   if (instrumentIds.length === 0) {
-    return NextResponse.json({
+    return setVisitorCookie(NextResponse.json({
       userId,
       watermark: { lastSeenAt: lastSeenAt.toISOString(), initialized: Boolean(savedWatermark) },
       surfaced: [],
       suppressedCount: 0,
       emptyState: "Nothing meaningful changed since you last checked.",
       forwardLooking: { source: "bundled-demo-calendar", events: [] },
-    });
+    }), visitorId);
   }
 
   const eventRows = await db
@@ -59,12 +60,12 @@ export async function GET(request: Request) {
     now,
   );
 
-  return NextResponse.json({
+  return setVisitorCookie(NextResponse.json({
     userId,
     watermark: { lastSeenAt: lastSeenAt.toISOString(), initialized: Boolean(savedWatermark) },
     surfaced: surfaced.map((event) => ({ ...event, detectedAt: event.detectedAt.toISOString() })),
     suppressedCount,
     ...(surfaced.length === 0 ? { emptyState: "Nothing meaningful changed since you last checked." } : {}),
     forwardLooking: { source: "bundled-demo-calendar", events: forwardLooking },
-  });
+  }), visitorId);
 }

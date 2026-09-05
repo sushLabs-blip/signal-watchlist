@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getDb } from "@/db";
 import { significanceEvent, userWatermark, watchlist, watchlistItem } from "@/db/schema";
-import { acknowledgeSchema, getUserId, validationError } from "@/lib/watchlist";
+import { acknowledgeSchema, getUserId, getVisitorId, validationError } from "@/lib/watchlist";
 
 export async function POST(request: Request) {
   const payload = acknowledgeSchema.safeParse(await request.json().catch(() => null));
@@ -11,6 +11,7 @@ export async function POST(request: Request) {
 
   const db = getDb();
   const userId = getUserId(request);
+  const visitorId = getVisitorId(request);
   const [event] = await db
     .select({ detectedAt: significanceEvent.detectedAt })
     .from(significanceEvent)
@@ -24,12 +25,12 @@ export async function POST(request: Request) {
   const [current] = await db
     .select({ lastSeenAt: userWatermark.lastSeenAt })
     .from(userWatermark)
-    .where(eq(userWatermark.userId, userId));
+    .where(eq(userWatermark.userId, visitorId));
   const lastSeenAt = current && current.lastSeenAt > event.detectedAt ? current.lastSeenAt : event.detectedAt;
 
   await db
     .insert(userWatermark)
-    .values({ userId, lastSeenAt })
+    .values({ userId: visitorId, lastSeenAt })
     .onConflictDoUpdate({
       target: userWatermark.userId,
       set: { lastSeenAt },
@@ -38,6 +39,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     acknowledged: payload.data.eventId,
     engagement: payload.data.engagement,
-    watermark: { lastSeenAt: lastSeenAt.toISOString() },
+      watermark: { lastSeenAt: lastSeenAt.toISOString() },
   });
 }

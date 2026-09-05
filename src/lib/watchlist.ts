@@ -33,3 +33,15 @@ export function validationError(error: z.ZodError) {
     { status: 400 },
   );
 }
+
+export function getVisitorId(request: Request) {
+  const match = request.headers.get("cookie")?.match(/(?:^|;\s*)signal_visitor=([^;]+)/);
+  return match?.[1] || crypto.randomUUID();
+}
+
+export function setVisitorCookie(response: Response, visitorId: string) {
+  if (!response.headers.has("set-cookie")) {
+    response.headers.append("set-cookie", `signal_visitor=${visitorId}; Path=/; Max-Age=31536000; SameSite=Lax`);
+  }
+  return response;
+}
